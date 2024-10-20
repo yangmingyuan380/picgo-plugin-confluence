@@ -33,15 +33,16 @@ module.exports = (ctx) => {
       log.warn(message)
     }
   }
-
   const handle = async function (ctx) {
+    logInfo('开始上传....')
     const userConfig = ctx.getConfig('picBed.confluence')
     if (!userConfig) {
       throw new Error('Can\'t find uploader config')
     }
     const confluenceBaseUrl = userConfig.confluenceBaseUrl
+    const previewBaseUrl = userConfig.previewBaseUrl || confluenceBaseUrl
     const pageId = userConfig.pageId
-    const realUrl = confluenceBaseUrl + '/rest/api/content/' + pageId + '/child/attachment'
+    const realUrl = new URL('/rest/api/content/' + pageId + '/child/attachment', confluenceBaseUrl).toString()
 
     try {
       const imgList = ctx.output || []
@@ -53,14 +54,16 @@ module.exports = (ctx) => {
 
         const request = buildRequest(realUrl, image, imgList[i].fileName, userConfig)
 
-        const res = await fetchRequest(ctx, request)
+        const res = await ctx.request(request)
+        logWarn(`res body: ${JSON.stringify(res.body)}`)
         if (!res.statusCode) {
           const body = res || {}
           const {results} = body || {}
           const {_links} = (results && results[0]) || {}
           const {download} = _links || {}
           logWarn(`download: ${JSON.stringify(download)}`)
-          imgList[i]['imgUrl'] = `${confluenceBaseUrl}${download || ''}`
+          imgList[i]['imgUrl'] = new URL(download || '', previewBaseUrl).toString()
+          imgList[i]['url'] = new URL(download || '', confluenceBaseUrl).toString()
           delete imgList[i].base64Image
           delete imgList[i].buffer
         } else {
@@ -72,32 +75,12 @@ module.exports = (ctx) => {
         }
       }
     } catch (err) {
+      logError(err)
       ctx.emit('notification', {
         title: '上传失败',
         body: err
       })
     }
-  }
-
-  const fetchRequest = (ctx, request) => {
-    return new Promise((resolve, reject) => {
-      ctx.request(request)
-        .then(function (response) {
-          const {body, headers} = response
-          const cookie = headers['set-cookie']
-          logInfo(`fetchRequest-cookie: ${cookie}`)
-          if (cookie) {
-            ctx.setConfig({
-              'picBed.confluence.cookie': cookie
-            })
-          }
-          logInfo(`fetchRequest-response: ${response && JSON.stringify(response)}`)
-          resolve(body)
-        })
-        .catch(function (err) {
-          resolve(err)
-        })
-    })
   }
 
   /**
@@ -109,15 +92,12 @@ module.exports = (ctx) => {
    * @param userConfig
    */
   const buildRequest = (url, image, fileName, userConfig = {}) => {
-    const userName = userConfig.userName
-    const userPassword = userConfig.userPassword
-    const cookie = userConfig.cookie
-    console.info(`buildRequest.cookie = ${cookie}`)
+    const userToken = userConfig.userToken
+    logInfo(`buildRequest.userToken = ${userToken}`)
     const headers = {
       contentType: 'multipart/form-data',
       'X-Atlassian-Token': 'nocheck',
-      'Authorization': `Basic ${Buffer.from(`${userName}:${userPassword}`).toString('base64')}`,
-      cookie
+      'Authorization': `Bearer ${userToken}`
     }
     const formData = {
       file: {
@@ -130,9 +110,9 @@ module.exports = (ctx) => {
     }
     return {
       method: 'POST',
-      resolveWithFullResponse: true,
+      resolveWithFullResponse: false,
       json: true,
-      uri: url,
+      url: url,
       headers: headers,
       formData: formData
     }
@@ -153,20 +133,20 @@ module.exports = (ctx) => {
         alias: 'Confluence网站地址'
       },
       {
-        name: 'userName',
+        name: 'previewBaseUrl',
         type: 'input',
-        default: userConfig.userName,
-        required: true,
-        message: 'User Name',
-        alias: '用户名'
+        default: userConfig.previewBaseUrl,
+        required: false,
+        message: 'https://confluence.com',
+        alias: '预览图片网站地址'
       },
       {
-        name: 'userPassword',
-        type: 'password',
-        default: userConfig.userPassword,
+        name: 'userToken',
+        type: 'input',
+        default: userConfig.userToken,
         required: true,
-        message: 'User Password',
-        alias: '密码'
+        message: 'User Token',
+        alias: '个人访问令牌'
       },
       {
         name: 'pageId',

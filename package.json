@@ -1,12 +1,11 @@
 {
-  "name": "picgo-plugin-confluence",
-  "version": "1.2.1",
+  "name": "picgo-plugin-confluencev2",
+  "version": "1.2.2",
   "description": "picgo uploader for confluence",
   "main": "src/index.js",
   "publishConfig": {
     "access": "public"
   },
-  "homepage": "https://github.com/ridup/picgo-plugin-confluence",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "patch": "npm version patch && npm publish && git push origin main && git push origin --tags",
